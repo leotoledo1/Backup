@@ -1,0 +1,1 @@
+pyinstaller --noconsole --onefile --version-file file_version_info.txt --add-data "merco.ico;." --icon "merco.ico" backup_restore.py
