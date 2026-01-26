@@ -102,6 +102,7 @@ def obter_bases(empresa_db, portas_firebird):
             )
 
             cur = conn.cursor()
+            log.info("Conexão bem-sucedida EMPRESA.GDB. Buscando bases de dados ativas...")
             # Busca o caminho de todas as bases de dados cadastradas e ativas no sistema
             cur.execute("SELECT e.caminho FROM EMPRESA e WHERE e.ATIVO = 1")
             bases = [row[0] for row in cur.fetchall()]
