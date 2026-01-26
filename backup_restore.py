@@ -52,7 +52,7 @@ portas_firebird = capturar_portas_firebird()
 
 bases = obter_bases(empresa_db, portas_firebird) if empresa_db.lower().endswith("empresa.gdb") else [empresa_db]
 
-PASTA_RAIZ = "backup_mercosistem"
+PASTA_RAIZ = "backup_Restore"
 PASTA_BACKUP = os.path.join(PASTA_RAIZ, "backup")
 PASTA_RESTORE = os.path.join(PASTA_RAIZ, "restore")
 
