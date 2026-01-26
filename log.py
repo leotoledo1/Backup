@@ -42,6 +42,7 @@ def configurar_logger(nome="Backup_Mercosistem"):
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
+        force=True,
         handlers=[
             # FileHandler com encoding utf-8 para suportar acentos nas mensagens
             logging.FileHandler(log_file, encoding="utf-8"),
