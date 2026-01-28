@@ -3,89 +3,90 @@ import threading
 import os
 import sys
 
-# =================================================================
-# UTILITÁRIOS DE INTERFACE E RECURSOS
-# =================================================================
-
 def resource_path(relative_path):
-    """ 
-    Localiza o caminho dos recursos (como o ícone .ico) dentro do 
-    pacote gerado pelo PyInstaller ou no diretório de desenvolvimento.
-    """
     try:
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# =================================================================
-# JANELA DE PROGRESSO (LOADING)
-# =================================================================
-
 def mostrar_loading(funcao_background):
     """
-    Cria uma janela visual com uma barra de progresso indeterminada.
-    Gerencia a execução da lógica de backup em uma thread separada para
-    não congelar a interface gráfica (GUI).
+    A função_background agora deve aceitar um argumento de callback
+    para atualizar a porcentagem.
     """
-    # Configuração inicial da janela principal usando CustomTkinter
     root = ctk.CTk()
     
-    # Define o ícone da janela (merco.ico deve estar no diretório ou embutido)
     path_icone = resource_path("merco.ico")
-    root.after(200, lambda: root.iconbitmap(path_icone))
+    try:
+        root.after(200, lambda: root.iconbitmap(path_icone))
+    except:
+        pass 
     
     root.title("Mercosistem - Backup")
-    root.geometry("350x150")
+    root.geometry("400x180")
     root.resizable(False, False)
 
+    # Variável que controla o texto da porcentagem na tela
+    texto_porcentagem = ctk.StringVar(value="Preparando... 0%")
+
     def fechar_janela():
-        """ 
-        Handler para o botão de fechamento (X).
-        A janela é escondida (withdraw), mas o processo continua rodando
-        até que a thread de backup finalize com segurança.
-        """
+        # Apenas esconde a janela, o processo continua no fundo
         root.withdraw() 
 
-    # Sobrescreve o comportamento do botão fechar padrão do Windows
     root.protocol("WM_DELETE_WINDOW", fechar_janela)
 
-    # Elementos visuais: Label de status e Barra de progresso
+    # Label de Título
     label = ctk.CTkLabel(
         root, 
-        text="Backup Mercosistem em andamento...", 
-        font=("Roboto", 14, "bold")
+        text="Backup Mercosistem em andamento", 
+        font=("Roboto", 15, "bold")
     )
-    label.pack(pady=(25, 10))
+    label.pack(pady=(20, 5))
 
-    # Barra de progresso em modo "indeterminate" (fica indo e voltando)
-    barra = ctk.CTkProgressBar(root, orientation="horizontal", mode="indeterminate", width=280)
+    # --- BARRA DE PROGRESSO DETERMINADA ---
+    # mode="determinate" permite que a gente defina o valor exato
+    barra = ctk.CTkProgressBar(root, orientation="horizontal", mode="determinate", width=320)
+    barra.set(0) # Inicia em 0%
     barra.pack(pady=10)
-    barra.start()
+
+    # Label que mostra a porcentagem (ex: 45%)
+    label_pct = ctk.CTkLabel(
+        root, 
+        textvariable=texto_porcentagem, 
+        font=("Roboto", 12)
+    )
+    label_pct.pack()
+
+    # =================================================================
+    # FUNÇÃO DE ATUALIZAÇÃO (CALLBACK)
+    # =================================================================
+    def atualizar_progresso(valor_decimal):
+        """
+        valor_decimal: float entre 0.0 e 1.0
+        """
+        # Converte 0.1 para "10%"
+        pct = int(valor_decimal * 100)
+        
+        # O .after(0, ...) garante que a interface atualize de forma segura
+        root.after(0, lambda: barra.set(valor_decimal))
+        root.after(0, lambda: texto_porcentagem.set(f"Progresso: {pct}%"))
 
     # =================================================================
     # GERENCIAMENTO DE THREADS
     # =================================================================
-
-    # Dispara a função de backup (rodar_backup) em uma thread separada.
-    # daemon=False garante que o Python espere o backup terminar antes de fechar.
-    t = threading.Thread(target=funcao_background)
+    
+    # Passamos a função 'atualizar_progresso' para dentro do seu rodar_backup
+    t = threading.Thread(target=funcao_background, args=(atualizar_progresso,))
     t.daemon = False 
     t.start()
 
     def checar_thread():
-        """
-        Função recursiva que monitora se a thread de backup ainda está ativa.
-        Se terminou, encerra a interface e fecha o programa completamente.
-        """
         if t.is_alive():
-            # Verifica novamente após 500ms (0.5 segundos)
             root.after(500, checar_thread)
         else:
-            # Finaliza o loop principal da interface
             root.quit() 
             root.destroy()
 
-    # Inicia o monitoramento da thread e o loop da interface
     checar_thread()
     root.mainloop()

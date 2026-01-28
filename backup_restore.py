@@ -105,14 +105,19 @@ def enviar_ftp(zip_name, codigo_empresa):
         log.error(f"Erro ao enviar FTP (empresa {codigo_empresa})", exc_info=True)
 
 # --- FLUXO PRINCIPAL ---
-def rodar_backup():
+def rodar_backup(callback_progresso):
     """ 
     Executa o ciclo completo: 
     1. Backup (.fbk) -> 2. Restore (.fdb) -> 3. Compactação (.zip) -> 4. Upload FTP 
     """
-    for dsn in bases:
+    total_bases = len(bases)
+    for idx, dsn in enumerate(bases):
         try:
+            progresso_base = idx / total_bases
+            incremento_etapa = 1.0 / total_bases / 4  # Cada uma das 4 etapas vale 1/4 da fatia da base
             log.info(f"Iniciando processamento da base: {dsn}")
+            callback_progresso(progresso_base + (incremento_etapa * 0)) # 0% da base atual
+           
             # Configuração de nomes de arquivos com timestamp
             nome_base = os.path.basename(dsn.split(":")[-1]).replace(".FDB", "")
             data = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -129,10 +134,13 @@ def rodar_backup():
             # Execução do GBAK para Backup
             log.info(f"Executando GBAK Backup para: {fbk}")
             subprocess.run([gbak_path, "-b", "-g", "-ig", "-l", "-user", FB_USER, "-password", FB_PASS, dsn, fbk], check=True, startupinfo=si)
+            callback_progresso(progresso_base + (incremento_etapa * 1))
+            
             log.info("Backup físico (.fbk) gerado com sucesso.")
             # Execução do GBAK para Restore (Validação da integridade do backup)
             log.info(f"Iniciando Restore de validação em: {fdb_restore}")
             subprocess.run([gbak_path, "-r", "-p", "4096", "-user", FB_USER, "-password", FB_PASS, fbk, fdb_restore], check=True, startupinfo=si)
+            callback_progresso(progresso_base + (incremento_etapa * 2))
             log.info("Restore de validação concluído. Banco íntegro.")
 
 
@@ -140,12 +148,19 @@ def rodar_backup():
             log.info("Compactando banco restaurado para formato ZIP...")
             zip_fdb = compactar_fdb(fdb_restore)
             os.remove(fdb_restore) # Remove o FDB temporário para poupar espaço
+            callback_progresso(progresso_base + (incremento_etapa * 3))
+            
+
             log.info(f"Compactação finalizada: {zip_fdb}")
             log.info(f"Enviando arquivo para o FTP da empresa {cod_empresa}...")
             enviar_ftp(zip_fdb, cod_empresa)
+            callback_progresso(progresso_base + (incremento_etapa * 4))
             log.info("Upload concluído!")
         except Exception as e:
             log.error(f" Erro no processamento da base {dsn}: {e}")
+            callback_progresso((idx + 1) / total_bases)
+
+    callback_progresso(1.0)
 
 if __name__ == "__main__":
     log.info("Finalizando o Atualizador.exe antes de iniciar o backup...")
