@@ -2,6 +2,7 @@ import subprocess
 import os
 from datetime import datetime
 import sys
+import time
 from dotenv import load_dotenv
 
 # --- GERENCIAMENTO DE RECURSOS ---
@@ -31,6 +32,7 @@ FB_PASS = os.getenv("FB_PASS")
 # Importações de módulos locais do projeto
 from encontrar_gbak import gbak_path
 from emcontrar_caminho import caminho_base, encontrar_banco_base, capturar_portas_firebird, obter_bases
+from log_discord import enviar_log_discord
 import fdb
 import re 
 import shutil
@@ -70,7 +72,7 @@ def matar_atualizador():
         si.wShowWindow = subprocess.SW_HIDE # Roda o taskkill sem abrir janela de CMD
         subprocess.run(["taskkill", "/F", "/IM", "atualizador.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, startupinfo=si)
     except Exception as e:
-        log.warning("Não foi possível finalizar atualizador.exe")
+        log.warning("Não foi possível finalizar atualizador.exe ")
 
 def buscar_cod_empresa(dsn):
     """ Conecta ao banco Firebird para buscar o número de série da empresa (usado no nome do arquivo). """
@@ -112,6 +114,8 @@ def rodar_backup(callback_progresso):
     """
     total_bases = len(bases)
     for idx, dsn in enumerate(bases):
+        inicio_cronometro = time.time()
+        cod_empresa = buscar_cod_empresa(dsn) or "DESCONHECIDO"
         try:
             progresso_base = idx / total_bases
             incremento_etapa = 1.0 / total_bases / 4  # Cada uma das 4 etapas vale 1/4 da fatia da base
@@ -153,12 +157,41 @@ def rodar_backup(callback_progresso):
 
             log.info(f"Compactação finalizada: {zip_fdb}")
             log.info(f"Enviando arquivo para o FTP da empresa {cod_empresa}...")
+            tamanho_mb = os.path.getsize(zip_fdb) / (1024 * 1024)
             enviar_ftp(zip_fdb, cod_empresa)
             callback_progresso(progresso_base + (incremento_etapa * 4))
             log.info("Upload concluído!")
+
+            tempo_total_segundos = time.time() - inicio_cronometro
+            minutos = int(tempo_total_segundos // 60)
+            segundos = int(tempo_total_segundos % 60)
+
+            enviar_log_discord(
+                status="sucesso", 
+                codigo_empresa=cod_empresa, 
+                mensagem=f"✅ Backup concluído: {nome_base}",
+                detalhes=(
+                    f"📦 Tamanho: {tamanho_mb:.2f} MB\n"
+                    f"⏱️ Tempo: {minutos}m {segundos}s\n"
+                    f"🔗 Arquivo: {os.path.basename(zip_fdb)}"
+                )
+            )
+            if os.path.exists(fbk): os.remove(fbk)
+            if os.path.exists(zip_fdb): os.remove(zip_fdb)
+
         except Exception as e:
             log.error(f" Erro no processamento da base {dsn}: {e}")
-            callback_progresso((idx + 1) / total_bases)
+            log.error(f"Erro crítico: {e}")
+            tempo_total_segundos = time.time() - inicio_cronometro
+            minutos = int(tempo_total_segundos // 60)
+            segundos = int(tempo_total_segundos % 60)
+
+            enviar_log_discord(
+                status="erro", 
+                codigo_empresa=cod_empresa, 
+                mensagem=f"❌ Falha no backup: {nome_base}",
+                detalhes=f"⏱️ **Tentativa durou:** {minutos}m {segundos}s\n⚠️ **Erro:** {str(e)}"
+            )
 
     callback_progresso(1.0)
 
